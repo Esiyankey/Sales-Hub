@@ -1,0 +1,428 @@
+// Local storage database management for multi-user business app
+export interface User {
+  id: string;
+  username: string;
+  password: string;
+  businessName: string;
+  createdAt: number;
+}
+
+export interface Product {
+  id: string;
+  userId: string;
+  name: string;
+  costPrice: number;
+  sellingPrice: number;
+  currentStock: number;
+  minimumStock: number;
+  createdAt: number;
+}
+
+export interface Sale {
+  id: string;
+  userId: string;
+  items: Array<{
+    productId: string;
+    productName: string;
+    quantity: number;
+    costPrice: number;
+    sellingPrice: number;
+    subtotal: number;
+  }>;
+  customerName: string;
+  customerPhone?: string;
+  notes?: string;
+  totalCost: number;
+  totalRevenue: number;
+  profit: number;
+  date: number;
+}
+
+export interface Expense {
+  id: string;
+  userId: string;
+  title: string;
+  amount: number;
+  category:
+    | "stock"
+    | "transportation"
+    | "operational"
+    | "utilities"
+    | "supplies"
+    | "other";
+  notes?: string;
+  date: number;
+  createdAt: number;
+}
+
+export interface Debtor {
+  id: string;
+  userId: string;
+  name: string;
+  amount: number;
+  phone?: string;
+  description?: string;
+  status: "pending" | "partial" | "cleared";
+  createdAt: number;
+}
+
+export interface ProfitDistribution {
+  id: string;
+  userId: string;
+  month: number; // 0-11
+  year: number;
+  totalProfit: number;
+  tithe: number;
+  salary: number;
+  savings: number;
+  reinvestment: number;
+  notes?: string;
+  date: number;
+}
+
+const DB_KEY = "saleshub_db";
+
+interface Database {
+  users: User[];
+  products: Product[];
+  sales: Sale[];
+  expenses: Expense[];
+  debtors: Debtor[];
+  profitDistributions: ProfitDistribution[];
+}
+
+function getDB(): Database {
+  try {
+    const data = localStorage.getItem(DB_KEY);
+    return data ? JSON.parse(data) : initializeDB();
+  } catch {
+    return initializeDB();
+  }
+}
+
+function initializeDB(): Database {
+  return {
+    users: [],
+    products: [],
+    sales: [],
+    expenses: [],
+    debtors: [],
+    profitDistributions: [],
+  };
+}
+
+function saveDB(db: Database): void {
+  localStorage.setItem(DB_KEY, JSON.stringify(db));
+}
+
+// User management
+export function registerUser(
+  username: string,
+  password: string,
+  businessName: string,
+): User | null {
+  const db = getDB();
+  if (db.users.some((u) => u.username === username)) return null;
+
+  const user: User = {
+    id: Date.now().toString(),
+    username,
+    password,
+    businessName,
+    createdAt: Date.now(),
+  };
+
+  db.users.push(user);
+  saveDB(db);
+  return user;
+}
+
+export function loginUser(username: string, password: string): User | null {
+  const db = getDB();
+  const user = db.users.find(
+    (u) => u.username === username && u.password === password,
+  );
+  return user || null;
+}
+
+export function getUser(userId: string): User | undefined {
+  const db = getDB();
+  return db.users.find((u) => u.id === userId);
+}
+
+export function updateUser(userId: string, businessName: string): void {
+  const db = getDB();
+  const user = db.users.find((u) => u.id === userId);
+  if (user) {
+    user.businessName = businessName;
+    saveDB(db);
+  }
+}
+
+// Product management
+export function addProduct(
+  userId: string,
+  product: Omit<Product, "id" | "userId" | "createdAt">,
+): Product {
+  const db = getDB();
+  const newProduct: Product = {
+    ...product,
+    id: Date.now().toString(),
+    userId,
+    createdAt: Date.now(),
+  };
+  db.products.push(newProduct);
+  saveDB(db);
+  return newProduct;
+}
+
+export function getProducts(userId: string): Product[] {
+  const db = getDB();
+  return db.products.filter((p) => p.userId === userId);
+}
+
+export function updateProduct(
+  userId: string,
+  productId: string,
+  updates: Partial<Product>,
+): void {
+  const db = getDB();
+  const product = db.products.find(
+    (p) => p.id === productId && p.userId === userId,
+  );
+  if (product) {
+    Object.assign(product, updates);
+    saveDB(db);
+  }
+}
+
+export function deleteProduct(userId: string, productId: string): void {
+  const db = getDB();
+  db.products = db.products.filter(
+    (p) => !(p.id === productId && p.userId === userId),
+  );
+  saveDB(db);
+}
+
+// Sales management
+export function addSale(
+  userId: string,
+  sale: Omit<Sale, "id" | "userId" | "date">,
+): Sale {
+  const db = getDB();
+  const newSale: Sale = {
+    ...sale,
+    id: Date.now().toString(),
+    userId,
+    date: Date.now(),
+  };
+
+  // Update product stock
+  for (const item of newSale.items) {
+    const product = db.products.find(
+      (p) => p.id === item.productId && p.userId === userId,
+    );
+    if (product) {
+      product.currentStock -= item.quantity;
+    }
+  }
+
+  db.sales.push(newSale);
+  saveDB(db);
+  return newSale;
+}
+
+export function getSales(userId: string): Sale[] {
+  const db = getDB();
+  return db.sales
+    .filter((s) => s.userId === userId)
+    .sort((a, b) => b.date - a.date);
+}
+
+// Expense management
+export function addExpense(
+  userId: string,
+  expense: Omit<Expense, "id" | "userId" | "createdAt">,
+): Expense {
+  const db = getDB();
+  const newExpense: Expense = {
+    ...expense,
+    id: Date.now().toString(),
+    userId,
+    createdAt: Date.now(),
+  };
+  db.expenses.push(newExpense);
+  saveDB(db);
+  return newExpense;
+}
+
+export function getExpenses(userId: string): Expense[] {
+  const db = getDB();
+  return db.expenses
+    .filter((e) => e.userId === userId)
+    .sort((a, b) => b.date - a.date);
+}
+
+export function deleteExpense(userId: string, expenseId: string): void {
+  const db = getDB();
+  db.expenses = db.expenses.filter(
+    (e) => !(e.id === expenseId && e.userId === userId),
+  );
+  saveDB(db);
+}
+
+// Debtor management
+export function addDebtor(
+  userId: string,
+  debtor: Omit<Debtor, "id" | "userId" | "createdAt">,
+): Debtor {
+  const db = getDB();
+  const newDebtor: Debtor = {
+    ...debtor,
+    id: Date.now().toString(),
+    userId,
+    createdAt: Date.now(),
+  };
+  db.debtors.push(newDebtor);
+  saveDB(db);
+  return newDebtor;
+}
+
+export function getDebtors(userId: string): Debtor[] {
+  const db = getDB();
+  return db.debtors
+    .filter((d) => d.userId === userId)
+    .sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export function updateDebtor(
+  userId: string,
+  debtorId: string,
+  updates: Partial<Debtor>,
+): void {
+  const db = getDB();
+  const debtor = db.debtors.find(
+    (d) => d.id === debtorId && d.userId === userId,
+  );
+  if (debtor) {
+    Object.assign(debtor, updates);
+    saveDB(db);
+  }
+}
+
+export function deleteDebtor(userId: string, debtorId: string): void {
+  const db = getDB();
+  db.debtors = db.debtors.filter(
+    (d) => !(d.id === debtorId && d.userId === userId),
+  );
+  saveDB(db);
+}
+
+// Profit Distribution
+export function addProfitDistribution(
+  userId: string,
+  distribution: Omit<ProfitDistribution, "id" | "userId" | "date">,
+): ProfitDistribution {
+  const db = getDB();
+  const newDistribution: ProfitDistribution = {
+    ...distribution,
+    id: Date.now().toString(),
+    userId,
+    date: Date.now(),
+  };
+  db.profitDistributions.push(newDistribution);
+  saveDB(db);
+  return newDistribution;
+}
+
+export function getProfitDistributions(userId: string): ProfitDistribution[] {
+  const db = getDB();
+  return db.profitDistributions
+    .filter((p) => p.userId === userId)
+    .sort((a, b) => b.date - a.date);
+}
+
+// Export/Import
+export function exportUserData(userId: string): string {
+  const db = getDB();
+  const userData = {
+    meta: {
+      exportedAt: Date.now(),
+      version: "1.0.0",
+    },
+    user: db.users.find((u) => u.id === userId),
+    products: db.products.filter((p) => p.userId === userId),
+    sales: db.sales.filter((s) => s.userId === userId),
+    expenses: db.expenses.filter((e) => e.userId === userId),
+    debtors: db.debtors.filter((d) => d.userId === userId),
+    profitDistributions: db.profitDistributions.filter(
+      (p) => p.userId === userId,
+    ),
+  };
+
+  return JSON.stringify(userData, null, 2);
+}
+
+export function importUserData(jsonData: string): void {
+  try {
+    const data = JSON.parse(jsonData);
+    const db = getDB();
+    // Import user if provided. If a user with same username exists, map imported items to that user.
+    let targetUserId: string | undefined = undefined;
+    if (data.user) {
+      const existingUser = db.users.find(
+        (u) => u.id === data.user.id || u.username === data.user.username,
+      );
+      if (!existingUser) {
+        db.users.push(data.user);
+        targetUserId = data.user.id;
+      } else {
+        targetUserId = existingUser.id;
+      }
+    }
+
+    const ensureAndMerge = (
+      target: any[],
+      incoming: any[] | undefined,
+      key = "id",
+    ) => {
+      if (!incoming || !Array.isArray(incoming)) return;
+      for (const item of incoming) {
+        // remap userId if it points to the imported user
+        if (
+          data.user &&
+          item.userId &&
+          item.userId === data.user.id &&
+          targetUserId
+        ) {
+          item.userId = targetUserId;
+        }
+
+        // if item has no userId but we have a target user, set it
+        if (!item.userId && targetUserId) {
+          item.userId = targetUserId;
+        }
+
+        // avoid duplicates by id
+        if (!target.some((t) => t[key] === item[key])) {
+          target.push(item);
+        }
+      }
+    };
+
+    ensureAndMerge(db.products, data.products);
+    ensureAndMerge(db.sales, data.sales);
+    ensureAndMerge(db.expenses, data.expenses);
+    ensureAndMerge(db.debtors, data.debtors);
+    ensureAndMerge(db.profitDistributions, data.profitDistributions);
+
+    saveDB(db);
+  } catch (error) {
+    console.error("Failed to import data:", error);
+    throw new Error("Invalid data format");
+  }
+}
+
+export function clearAllData(): void {
+  localStorage.removeItem(DB_KEY);
+}
