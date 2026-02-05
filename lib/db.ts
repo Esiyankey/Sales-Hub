@@ -367,9 +367,23 @@ export function importUserData(jsonData: string): void {
   try {
     const data = JSON.parse(jsonData);
     const db = getDB();
-    // Import user if provided. If a user with same username exists, map imported items to that user.
+    // Determine where imported items should be mapped.
+    // Prefer the currently logged-in session user (if any) so imports land in the active account.
     let targetUserId: string | undefined = undefined;
-    if (data.user) {
+    try {
+      const session = sessionStorage.getItem("currentUser");
+      if (session) {
+        const sessionUser = JSON.parse(session);
+        if (sessionUser && sessionUser.id) {
+          targetUserId = sessionUser.id;
+        }
+      }
+    } catch {
+      // ignore session parsing errors
+    }
+
+    // If there's no active session or we still need to import a standalone user, try to map/create from the imported user
+    if (!targetUserId && data.user) {
       const existingUser = db.users.find(
         (u) => u.id === data.user.id || u.username === data.user.username,
       );
@@ -387,26 +401,37 @@ export function importUserData(jsonData: string): void {
       key = "id",
     ) => {
       if (!incoming || !Array.isArray(incoming)) return;
-      for (const item of incoming) {
-        // remap userId if it points to the imported user
-        if (
+
+      for (const rawItem of incoming) {
+        const item = { ...rawItem } as any;
+
+        // Assign to target user when possible
+        if (targetUserId) {
+          item.userId = targetUserId;
+        } else if (
           data.user &&
           item.userId &&
           item.userId === data.user.id &&
           targetUserId
         ) {
+          // legacy branch (kept for safety)
           item.userId = targetUserId;
         }
 
-        // if item has no userId but we have a target user, set it
-        if (!item.userId && targetUserId) {
-          item.userId = targetUserId;
+        // Ensure date/createdAt fields exist for consistency
+        if (!item.createdAt && item.date) item.createdAt = item.date;
+        if (!item.date && item.createdAt) item.date = item.createdAt;
+
+        // Avoid id collisions: if an item with same id exists, generate a new unique id
+        const exists = target.some((t) => t[key] === item[key]);
+        if (exists || !item[key]) {
+          const newId =
+            Date.now().toString() +
+            Math.floor(Math.random() * 10000).toString();
+          item[key] = newId;
         }
 
-        // avoid duplicates by id
-        if (!target.some((t) => t[key] === item[key])) {
-          target.push(item);
-        }
+        target.push(item);
       }
     };
 

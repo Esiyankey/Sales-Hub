@@ -55,13 +55,23 @@ export function ReportsPage() {
     const restockingCosts = monthExpenses
       .filter((e) => e.category === "stock")
       .reduce((sum, e) => sum + e.amount, 0);
-    const operatingExpenses = monthExpenses
-      .filter((e) => e.category !== "stock")
+    const transportationCosts = monthExpenses
+      .filter((e) => e.category === "transportation")
       .reduce((sum, e) => sum + e.amount, 0);
+
+    const otherExpenses = monthExpenses
+      .filter((e) => e.category !== "stock" && e.category !== "transportation")
+      .reduce((sum, e) => sum + e.amount, 0);
+
+    // totalCost displayed in the UI = cost from sales minus restocking (as requested)
+    const totalCost = totalCostFromSales - restockingCosts;
+
+    // Stock & Transportation shown together
+    const stockAndTransport = restockingCosts + transportationCosts;
 
     const totalCOGS = totalCostFromSales + restockingCosts;
     const grossProfit = totalRevenue - totalCOGS;
-    const netProfit = grossProfit - operatingExpenses;
+    const netProfit = grossProfit - otherExpenses;
     const profitMargin =
       totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
