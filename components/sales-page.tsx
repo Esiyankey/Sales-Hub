@@ -26,6 +26,7 @@ export function SalesPage() {
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [salesSearch, setSalesSearch] = useState("");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [customerName, setCustomerName] = useState("");
@@ -120,6 +121,18 @@ export function SalesPage() {
     0,
   );
   const totalProfit = totalRevenue - totalCost;
+
+  const displayedSales = sales.filter((s) => {
+    if (!salesSearch.trim()) return true;
+    const q = salesSearch.toLowerCase();
+    if (s.customerName && s.customerName.toLowerCase().includes(q)) return true;
+    if (
+      s.items &&
+      s.items.some((it: any) => it.productName.toLowerCase().includes(q))
+    )
+      return true;
+    return false;
+  });
 
   const handleCompleteSale = () => {
     if (!user) return;
@@ -383,9 +396,21 @@ export function SalesPage() {
                 <h2 className="text-xl font-bold text-foreground mb-4">
                   Recent Sales
                 </h2>
+                <div className="mb-4 flex items-center gap-2">
+                  <Input
+                    placeholder="Search sales by customer or product..."
+                    value={salesSearch}
+                    onChange={(e) => setSalesSearch(e.target.value)}
+                    className="flex-1"
+                  />
+                  <div className="text-sm text-muted-foreground">
+                    {displayedSales.length} results
+                  </div>
+                </div>
+
                 <div className="space-y-3 max-h-96 overflow-y-auto">
                   {sales.length > 0 ? (
-                    sales.slice(0, 10).map((sale) => (
+                    displayedSales.map((sale) => (
                       <button
                         key={sale.id}
                         onClick={() => setViewingSale(sale)}

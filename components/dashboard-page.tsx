@@ -11,6 +11,7 @@ interface DashboardStats {
   lowStockCount: number;
   activeProducts: number;
   lowStockItems: any[];
+  totalItemsSold: number;
 }
 
 export function DashboardPage() {
@@ -22,6 +23,7 @@ export function DashboardPage() {
     lowStockCount: 0,
     activeProducts: 0,
     lowStockItems: [],
+    totalItemsSold: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
 
@@ -107,6 +109,11 @@ export function DashboardPage() {
       lowStockCount: lowStockItems.length,
       activeProducts: products.length,
       lowStockItems: lowStockItems.slice(0, 5),
+      totalItemsSold: sales.reduce(
+        (acc, s) =>
+          acc + s.items.reduce((a: number, i: any) => a + (i.quantity || 0), 0),
+        0,
+      ),
     });
 
     setIsLoading(false);
@@ -182,6 +189,27 @@ export function DashboardPage() {
               </svg>
             }
             color="bg-gradient-to-br from-primary to-accent"
+          />
+
+          <StatCard
+            title="Total Items Sold"
+            value={stats.totalItemsSold}
+            icon={
+              <svg
+                className="w-6 h-6 text-white"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M3 7h18M3 12h18M3 17h18"
+                />
+              </svg>
+            }
+            color="bg-gradient-to-br from-indigo-500 to-violet-500"
           />
 
           <StatCard
