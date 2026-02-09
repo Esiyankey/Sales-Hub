@@ -451,3 +451,185 @@ export function importUserData(jsonData: string): void {
 export function clearAllData(): void {
   localStorage.removeItem(DB_KEY);
 }
+
+// Inventory and Financial Calculations
+/**
+ * Calculate total inventory value based on cost prices and current stock
+ * Inventory Value = Sum of (currentStock × costPrice) for all products
+ */
+export function getTotalInventoryValue(userId: string): number {
+  const products = getProducts(userId);
+  return products.reduce((total, product) => {
+    return total + product.currentStock * product.costPrice;
+  }, 0);
+}
+
+/**
+ * Calculate total Cost of Goods Sold (COGS) across all sales
+ * This represents the cost price of items that have been sold
+ */
+export function getTotalCOGS(userId: string): number {
+  const sales = getSales(userId);
+  return sales.reduce((total, sale) => total + sale.totalCost, 0);
+}
+
+/**
+ * Calculate total revenue from all sales
+ */
+export function getTotalRevenue(userId: string): number {
+  const sales = getSales(userId);
+  return sales.reduce((total, sale) => total + sale.totalRevenue, 0);
+}
+
+/**
+ * Calculate total non-inventory expenses
+ * Excludes "stock" and "transportation" categories as these affect inventory, not profit directly
+ * Only actual business expenses (operational, utilities, supplies, salaries, marketing, etc.) are included
+ */
+export function getTotalExpenses(userId: string): number {
+  const expenses = getExpenses(userId);
+  return expenses
+    .filter((e) => e.category !== "stock" && e.category !== "transportation")
+    .reduce((total, expense) => total + expense.amount, 0);
+}
+
+/**
+ * Calculate inventory stock expenses (restocking costs)
+ * These increase inventory value, not counted as profit expenses
+ */
+export function getTotalStockExpenses(userId: string): number {
+  const expenses = getExpenses(userId);
+  return expenses
+    .filter((e) => e.category === "stock" || e.category === "transportation")
+    .reduce((total, expense) => total + expense.amount, 0);
+}
+
+/**
+ * Calculate profit using proper business logic
+ * Profit = Total Revenue - COGS - Operating Expenses
+ * COGS (Cost of Goods Sold) is tracked in sales
+ * Operating Expenses exclude inventory/restocking costs
+ */
+export function calculateTotalProfit(userId: string): number {
+  const totalRevenue = getTotalRevenue(userId);
+  const totalCOGS = getTotalCOGS(userId);
+  const totalExpenses = getTotalExpenses(userId);
+  return totalRevenue - totalCOGS - totalExpenses;
+}
+
+/**
+ * Daily stats calculation with proper categorization
+ */
+export interface DailyStats {
+  date: Date;
+  revenue: number;
+  cogs: number;
+  expenses: number;
+  profit: number;
+  itemsSold: number;
+}
+
+export function getDailyStats(userId: string, dateFilter?: Date): DailyStats {
+  const sales = getSales(userId);
+  const expenses = getExpenses(userId);
+
+  const targetDate = dateFilter || new Date();
+  targetDate.setHours(0, 0, 0, 0);
+
+  const daySales = sales.filter((s) => {
+    const saleDate = new Date(s.date);
+    saleDate.setHours(0, 0, 0, 0);
+    return saleDate.getTime() === targetDate.getTime();
+  });
+
+  const dayExpenses = expenses.filter((e) => {
+    const expDate = new Date(e.date);
+    expDate.setHours(0, 0, 0, 0);
+    return expDate.getTime() === targetDate.getTime();
+  });
+
+  const revenue = daySales.reduce((sum, s) => sum + s.totalRevenue, 0);
+  const cogs = daySales.reduce((sum, s) => sum + s.totalCost, 0);
+  const operatingExpenses = dayExpenses
+    .filter((e) => e.category !== "stock" && e.category !== "transportation")
+    .reduce((sum, e) => sum + e.amount, 0);
+  const profit = revenue - cogs - operatingExpenses;
+  const itemsSold = daySales.reduce(
+    (count, s) => count + s.items.reduce((a, i) => a + (i.quantity || 0), 0),
+    0,
+  );
+
+  return {
+    date: targetDate,
+    revenue,
+    cogs,
+    expenses: operatingExpenses,
+    profit,
+    itemsSold,
+  };
+}
+
+/**
+ * Monthly stats calculation with proper categorization
+ */
+export interface MonthlyStats {
+  month: number;
+  year: number;
+  revenue: number;
+  cogs: number;
+  expenses: number;
+  profit: number;
+  itemsSold: number;
+  inventoryValue: number;
+}
+
+export function getMonthlyStats(
+  userId: string,
+  month?: number,
+  year?: number,
+): MonthlyStats {
+  const sales = getSales(userId);
+  const expenses = getExpenses(userId);
+
+  const now = new Date();
+  const targetMonth = month !== undefined ? month : now.getMonth();
+  const targetYear = year !== undefined ? year : now.getFullYear();
+
+  const monthSales = sales.filter((s) => {
+    const saleDate = new Date(s.date);
+    return (
+      saleDate.getMonth() === targetMonth &&
+      saleDate.getFullYear() === targetYear
+    );
+  });
+
+  const monthExpenses = expenses.filter((e) => {
+    const expDate = new Date(e.date);
+    return (
+      expDate.getMonth() === targetMonth && expDate.getFullYear() === targetYear
+    );
+  });
+
+  const revenue = monthSales.reduce((sum, s) => sum + s.totalRevenue, 0);
+  const cogs = monthSales.reduce((sum, s) => sum + s.totalCost, 0);
+  const operatingExpenses = monthExpenses
+    .filter((e) => e.category !== "stock" && e.category !== "transportation")
+    .reduce((sum, e) => sum + e.amount, 0);
+  const profit = revenue - cogs - operatingExpenses;
+  const itemsSold = monthSales.reduce(
+    (count, s) => count + s.items.reduce((a, i) => a + (i.quantity || 0), 0),
+    0,
+  );
+  const inventoryValue = getTotalInventoryValue(userId);
+
+  return {
+    month: targetMonth,
+    year: targetYear,
+    revenue,
+    cogs,
+    expenses: operatingExpenses,
+    profit,
+    itemsSold,
+    inventoryValue,
+  };
+}

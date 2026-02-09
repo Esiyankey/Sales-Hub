@@ -1,101 +1,90 @@
 "use client";
 
 import { useAuth } from "@/lib/auth-context";
-import { getSales, getProducts, getExpenses } from "@/lib/db";
+import {
+  getSales,
+  getProducts,
+  getExpenses,
+  getDailyStats,
+  getMonthlyStats,
+  getTotalInventoryValue,
+  getTotalCOGS,
+  getTotalRevenue,
+  getTotalExpenses,
+} from "@/lib/db";
 import { useState, useEffect } from "react";
 
 interface DashboardStats {
-  todaySales: number;
+  // Today's Stats
+  todayRevenue: number;
+  todayCOGS: number;
+  todayExpenses: number;
   todayProfit: number;
+  todayItemsSold: number;
+
+  // Month's Stats
+  monthRevenue: number;
+  monthCOGS: number;
+  monthExpenses: number;
   monthProfit: number;
-  lowStockCount: number;
+  monthItemsSold: number;
+
+  // Inventory
+  inventoryValue: number;
   activeProducts: number;
+  lowStockCount: number;
   lowStockItems: any[];
-  totalItemsSold: number;
+
+  // Total Stats
+  totalRevenue: number;
+  totalCOGS: number;
+  totalExpenses: number;
+  totalProfit: number;
 }
 
 export function DashboardPage() {
   const { user } = useAuth();
   const [stats, setStats] = useState<DashboardStats>({
-    todaySales: 0,
+    todayRevenue: 0,
+    todayCOGS: 0,
+    todayExpenses: 0,
     todayProfit: 0,
+    todayItemsSold: 0,
+    monthRevenue: 0,
+    monthCOGS: 0,
+    monthExpenses: 0,
     monthProfit: 0,
-    lowStockCount: 0,
+    monthItemsSold: 0,
+    inventoryValue: 0,
     activeProducts: 0,
+    lowStockCount: 0,
     lowStockItems: [],
-    totalItemsSold: 0,
+    totalRevenue: 0,
+    totalCOGS: 0,
+    totalExpenses: 0,
+    totalProfit: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     if (!user) return;
 
-    const sales = getSales(user.id);
     const products = getProducts(user.id);
-    const expenses = getExpenses(user.id);
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Get daily stats
+    const dailyStats = getDailyStats(user.id);
 
-    const todaySalesData = sales.filter((s) => {
-      const saleDate = new Date(s.date);
-      saleDate.setHours(0, 0, 0, 0);
-      return saleDate.getTime() === today.getTime();
-    });
+    // Get monthly stats
+    const monthlyStats = getMonthlyStats(user.id);
 
-    const todayRevenue = todaySalesData.reduce(
-      (sum, s) => sum + s.totalRevenue,
-      0,
-    );
-    const todayExpenses = expenses.filter((e) => {
-      const expDate = new Date(e.date);
-      expDate.setHours(0, 0, 0, 0);
-      return expDate.getTime() === today.getTime();
-    });
+    // Get overall stats
+    const totalRevenue = getTotalRevenue(user.id);
+    const totalCOGS = getTotalCOGS(user.id);
+    const totalExpenses = getTotalExpenses(user.id);
+    const totalProfit = totalRevenue - totalCOGS - totalExpenses;
 
-    // Calculate today's profit
-    // Stock and transportation expenses are from revenue, not profit
-    const stockExpenses = todayExpenses
-      .filter((e) => e.category === "stock" || e.category === "transportation")
-      .reduce((sum, e) => sum + e.amount, 0);
-    const otherExpenses = todayExpenses
-      .filter((e) => e.category !== "stock" && e.category !== "transportation")
-      .reduce((sum, e) => sum + e.amount, 0);
-
-    const todayCost = todaySalesData.reduce((sum, s) => sum + s.totalCost, 0);
-    const todayProfit =
-      todayRevenue - stockExpenses - todayCost - otherExpenses;
-
-    // Calculate month profit
-    const currentMonth = today.getMonth();
-    const currentYear = today.getFullYear();
-
-    const monthSales = sales.filter((s) => {
-      const saleDate = new Date(s.date);
-      return (
-        saleDate.getMonth() === currentMonth &&
-        saleDate.getFullYear() === currentYear
-      );
-    });
-
-    const monthExpenses = expenses.filter((e) => {
-      const expDate = new Date(e.date);
-      return (
-        expDate.getMonth() === currentMonth &&
-        expDate.getFullYear() === currentYear
-      );
-    });
-
-    const monthRevenue = monthSales.reduce((sum, s) => sum + s.totalRevenue, 0);
-    const monthStockExpenses = monthExpenses
-      .filter((e) => e.category === "stock" || e.category === "transportation")
-      .reduce((sum, e) => sum + e.amount, 0);
-    const monthOtherExpenses = monthExpenses
-      .filter((e) => e.category !== "stock" && e.category !== "transportation")
-      .reduce((sum, e) => sum + e.amount, 0);
-    const monthCost = monthSales.reduce((sum, s) => sum + s.totalCost, 0);
-    const monthProfitValue =
-      monthRevenue - monthStockExpenses - monthCost - monthOtherExpenses;
+    // Get inventory value
+    const inventoryValue = getTotalInventoryValue(user.id);
 
     // Low stock items
     const lowStockItems = products.filter(
@@ -103,54 +92,42 @@ export function DashboardPage() {
     );
 
     setStats({
-      todaySales: todayRevenue,
-      todayProfit,
-      monthProfit: monthProfitValue,
-      lowStockCount: lowStockItems.length,
+      todayRevenue: dailyStats.revenue,
+      todayCOGS: dailyStats.cogs,
+      todayExpenses: dailyStats.expenses,
+      todayProfit: dailyStats.profit,
+      todayItemsSold: dailyStats.itemsSold,
+      monthRevenue: monthlyStats.revenue,
+      monthCOGS: monthlyStats.cogs,
+      monthExpenses: monthlyStats.expenses,
+      monthProfit: monthlyStats.profit,
+      monthItemsSold: monthlyStats.itemsSold,
+      inventoryValue,
       activeProducts: products.length,
+      lowStockCount: lowStockItems.length,
       lowStockItems: lowStockItems.slice(0, 5),
-      totalItemsSold: sales.reduce(
-        (acc, s) =>
-          acc + s.items.reduce((a: number, i: any) => a + (i.quantity || 0), 0),
-        0,
-      ),
+      totalRevenue,
+      totalCOGS,
+      totalExpenses,
+      totalProfit,
     });
 
     setIsLoading(false);
   }, [user]);
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="animate-spin">
-          <svg
-            className="w-8 h-8 text-primary"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-        </div>
-      </div>
-    );
-  }
-
-  const StatCard = ({ title, value, icon, color }: any) => (
+  const StatCard = ({ title, value, icon, color, subtitle }: any) => (
     <div className="bg-card rounded-2xl border border-border p-6 flex items-start justify-between hover:shadow-lg transition-shadow">
-      <div>
+      <div className="flex-1">
         <p className="text-muted-foreground text-sm font-medium mb-1">
           {title}
         </p>
         <p className="text-3xl font-bold text-foreground">{value}</p>
+        {subtitle && (
+          <p className="text-xs text-muted-foreground mt-2">{subtitle}</p>
+        )}
       </div>
       <div
-        className={`w-12 h-12 rounded-xl flex items-center justify-center ${color}`}
+        className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ml-4 ${color}`}
       >
         {icon}
       </div>
@@ -168,158 +145,282 @@ export function DashboardPage() {
           </p>
         </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-          <StatCard
-            title="Today's Sales"
-            value={`₵${stats.todaySales.toLocaleString()}`}
-            icon={
-              <svg
-                className="w-6 h-6 text-white"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M13 10V3L4 14h7v7l9-11h-7z"
-                />
-              </svg>
-            }
-            color="bg-gradient-to-br from-primary to-accent"
-          />
+        {/* Today's Overview */}
+        <div className="mb-8">
+          <h2 className="text-xl font-bold text-foreground mb-4">Today</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <StatCard
+              title="Revenue"
+              value={`₵${stats.todayRevenue.toLocaleString()}`}
+              icon={
+                <svg
+                  className="w-6 h-6 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  />
+                </svg>
+              }
+              color="bg-gradient-to-br from-primary to-accent"
+              subtitle={`${stats.todayItemsSold} items sold`}
+            />
 
-          <StatCard
-            title="Total Items Sold"
-            value={stats.totalItemsSold}
-            icon={
-              <svg
-                className="w-6 h-6 text-white"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M3 7h18M3 12h18M3 17h18"
-                />
-              </svg>
-            }
-            color="bg-gradient-to-br from-indigo-500 to-violet-500"
-          />
+            <StatCard
+              title="COGS"
+              value={`₵${stats.todayCOGS.toLocaleString()}`}
+              icon={
+                <svg
+                  className="w-6 h-6 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"
+                  />
+                </svg>
+              }
+              color="bg-gradient-to-br from-orange-500 to-red-500"
+              subtitle="Cost of goods sold"
+            />
 
-          <StatCard
-            title="Today's Profit"
-            value={`₵${stats.todayProfit.toLocaleString()}`}
-            icon={
-              <svg
-                className="w-6 h-6 text-white"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-            }
-            color="bg-gradient-to-br from-accent to-primary"
-          />
+            <StatCard
+              title="Expenses"
+              value={`₵${stats.todayExpenses.toLocaleString()}`}
+              icon={
+                <svg
+                  className="w-6 h-6 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+              }
+              color="bg-gradient-to-br from-indigo-500 to-violet-500"
+              subtitle="Operating expenses"
+            />
 
-          <StatCard
-            title="Month's Profit"
-            value={`₵${stats.monthProfit.toLocaleString()}`}
-            icon={
-              <svg
-                className="w-6 h-6 text-white"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                />
-              </svg>
-            }
-            color="bg-gradient-to-br from-secondary to-primary"
-          />
+            <StatCard
+              title="Profit"
+              value={`₵${stats.todayProfit.toLocaleString()}`}
+              icon={
+                <svg
+                  className="w-6 h-6 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m0 0l-2-1m2 1v2.5M14 4l-2 1m0 0l-2-1m2 1v2.5"
+                  />
+                </svg>
+              }
+              color="bg-gradient-to-br from-green-500 to-emerald-500"
+              subtitle={
+                stats.todayRevenue > 0
+                  ? `${((stats.todayProfit / stats.todayRevenue) * 100).toFixed(1)}% margin`
+                  : "No sales"
+              }
+            />
+          </div>
+        </div>
 
-          <StatCard
-            title="Active Products"
-            value={stats.activeProducts}
-            icon={
-              <svg
-                className="w-6 h-6 text-white"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M20 7l-8-4-8 4m0 0l8-4m0 0l8 4m0 0v10l-8 4-8-4V7m8 4l-8-4"
-                />
-              </svg>
-            }
-            color="bg-gradient-to-br from-blue-500 to-cyan-500"
-          />
+        {/* Inventory Overview */}
+        <div className="mb-8">
+          <h2 className="text-xl font-bold text-foreground mb-4">
+            Inventory & Assets
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <StatCard
+              title="Inventory Value"
+              value={`₵${stats.inventoryValue.toLocaleString()}`}
+              icon={
+                <svg
+                  className="w-6 h-6 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M20 7l-8-4-8 4m0 0l8-4m0 0l8 4m0 0v10l-8 4-8-4V7m8 4l-8-4"
+                  />
+                </svg>
+              }
+              color="bg-gradient-to-br from-cyan-500 to-blue-500"
+              subtitle={`${stats.activeProducts} products`}
+            />
 
-          <StatCard
-            title="Low Stock Items"
-            value={stats.lowStockCount}
-            icon={
-              <svg
-                className="w-6 h-6 text-white"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 9v2m0 4v2m0 5v1m-8-4a1 1 0 011-1h14a1 1 0 011 1M5 8h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V10a2 2 0 012-2z"
-                />
-              </svg>
-            }
-            color="bg-gradient-to-br from-orange-500 to-red-500"
-          />
+            <StatCard
+              title="Active Products"
+              value={stats.activeProducts}
+              icon={
+                <svg
+                  className="w-6 h-6 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M20 7l-8-4-8 4m0 0l8-4m0 0l8 4m0 0v10l-8 4-8-4V7m8 4l-8-4"
+                  />
+                </svg>
+              }
+              color="bg-gradient-to-br from-blue-500 to-cyan-500"
+              subtitle={
+                stats.lowStockCount > 0
+                  ? `${stats.lowStockCount} low stock`
+                  : "All stocked"
+              }
+            />
 
-          <StatCard
-            title="Profit Margin"
-            value={
-              stats.todaySales > 0
-                ? `${((stats.todayProfit / stats.todaySales) * 100).toFixed(1)}%`
-                : "0%"
-            }
-            icon={
-              <svg
-                className="w-6 h-6 text-white"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M13 10V3L4 14h7v7l9-11h-7z"
-                />
-              </svg>
-            }
-            color="bg-gradient-to-br from-green-500 to-emerald-500"
-          />
+            <StatCard
+              title="Low Stock Items"
+              value={stats.lowStockCount}
+              icon={
+                <svg
+                  className="w-6 h-6 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 9v2m0 4v2m0 5v1m-8-4a1 1 0 011-1h14a1 1 0 011 1M5 8h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V10a2 2 0 012-2z"
+                  />
+                </svg>
+              }
+              color="bg-gradient-to-br from-orange-500 to-red-500"
+              subtitle={
+                stats.lowStockCount === 0
+                  ? "All items well stocked"
+                  : "Action required"
+              }
+            />
+          </div>
+        </div>
+
+        {/* Month's Overview */}
+        <div className="mb-8">
+          <h2 className="text-xl font-bold text-foreground mb-4">This Month</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <StatCard
+              title="Revenue"
+              value={`₵${stats.monthRevenue.toLocaleString()}`}
+              icon={
+                <svg
+                  className="w-6 h-6 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  />
+                </svg>
+              }
+              color="bg-gradient-to-br from-primary to-accent"
+              subtitle={`${stats.monthItemsSold} items sold`}
+            />
+
+            <StatCard
+              title="COGS"
+              value={`₵${stats.monthCOGS.toLocaleString()}`}
+              icon={
+                <svg
+                  className="w-6 h-6 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"
+                  />
+                </svg>
+              }
+              color="bg-gradient-to-br from-orange-500 to-red-500"
+              subtitle="Cost of goods sold"
+            />
+
+            <StatCard
+              title="Expenses"
+              value={`₵${stats.monthExpenses.toLocaleString()}`}
+              icon={
+                <svg
+                  className="w-6 h-6 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+              }
+              color="bg-gradient-to-br from-indigo-500 to-violet-500"
+              subtitle="Operating expenses"
+            />
+
+            <StatCard
+              title="Profit"
+              value={`₵${stats.monthProfit.toLocaleString()}`}
+              icon={
+                <svg
+                  className="w-6 h-6 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                  />
+                </svg>
+              }
+              color="bg-gradient-to-br from-green-500 to-emerald-500"
+              subtitle={
+                stats.monthRevenue > 0
+                  ? `${((stats.monthProfit / stats.monthRevenue) * 100).toFixed(1)}% margin`
+                  : "No sales this month"
+              }
+            />
+          </div>
         </div>
 
         {/* Low Stock Alerts */}
@@ -351,6 +452,119 @@ export function DashboardPage() {
             </div>
           </div>
         )}
+
+        {/* Financial Summary */}
+        <div className="mt-8 bg-card rounded-2xl border border-border p-6">
+          <h2 className="text-xl font-bold text-foreground mb-6">
+            Financial Summary (All Time)
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+            <StatCard
+              title="Total Revenue"
+              value={`₵${stats.totalRevenue.toLocaleString()}`}
+              icon={
+                <svg
+                  className="w-6 h-6 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  />
+                </svg>
+              }
+              color="bg-gradient-to-br from-primary to-accent"
+            />
+
+            <StatCard
+              title="Total COGS"
+              value={`₵${stats.totalCOGS.toLocaleString()}`}
+              icon={
+                <svg
+                  className="w-6 h-6 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"
+                  />
+                </svg>
+              }
+              color="bg-gradient-to-br from-orange-500 to-red-500"
+            />
+
+            <StatCard
+              title="Total Expenses"
+              value={`₵${stats.totalExpenses.toLocaleString()}`}
+              icon={
+                <svg
+                  className="w-6 h-6 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+              }
+              color="bg-gradient-to-br from-indigo-500 to-violet-500"
+            />
+
+            <StatCard
+              title="Total Profit"
+              value={`₵${stats.totalProfit.toLocaleString()}`}
+              icon={
+                <svg
+                  className="w-6 h-6 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m0 0l-2-1m2 1v2.5M14 4l-2 1m0 0l-2-1m2 1v2.5"
+                  />
+                </svg>
+              }
+              color="bg-gradient-to-br from-green-500 to-emerald-500"
+            />
+
+            <StatCard
+              title="Inventory Value"
+              value={`₵${stats.inventoryValue.toLocaleString()}`}
+              icon={
+                <svg
+                  className="w-6 h-6 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M20 7l-8-4-8 4m0 0l8-4m0 0l8 4m0 0v10l-8 4-8-4V7m8 4l-8-4"
+                  />
+                </svg>
+              }
+              color="bg-gradient-to-br from-cyan-500 to-blue-500"
+            />
+          </div>
+        </div>
       </div>
     </div>
   );
