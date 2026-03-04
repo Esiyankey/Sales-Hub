@@ -1,0 +1,21 @@
+{
+  "name": "Sales_Hub",
+  "short_name": "Sales_Hub",
+  "description": "A sales management application for tracking inventory,sales profit cost of goods , as well as revenue",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "/icon",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

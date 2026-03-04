@@ -2,13 +2,15 @@ import React from "react";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
-import { AuthProvider } from "@/lib/auth-context";
+import { AuthProviderSupabase } from "@/lib/auth-context-supabase";
 import "./globals.css";
+import { AuthProvider } from "@/lib/auth-context";
 
 const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
+  manifest: "/manifest.json",
   title: "SalesHub - Business Management System",
   description:
     "Complete business management system for inventory, sales, and financial tracking",
@@ -27,6 +29,9 @@ export const metadata: Metadata = {
     apple: "/apple-icon.png",
   },
 };
+export const viewport = {
+  themeColor: "#2563eb"
+}
 
 export default function RootLayout({
   children,
@@ -36,8 +41,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`font-sans antialiased`}>
-        <AuthProvider>{children}</AuthProvider>
-        <Analytics />
+        <AuthProvider>
+          <AuthProviderSupabase>{children}</AuthProviderSupabase>
+          <Analytics />
+        </AuthProvider>
       </body>
     </html>
   );
