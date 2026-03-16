@@ -1,9 +1,9 @@
 'use client';
 
-import { useAuth } from '@/lib/auth-context';
 import { AuthPage } from '@/components/auth-page';
 import { AppNav } from '@/components/app-nav';
 import { ExpensesPage } from '@/components/expenses-page';
+import { useAuth } from '@/lib/auth-context-supabase';
 
 export default function ExpensesRoute() {
   const { user, isLoading } = useAuth();

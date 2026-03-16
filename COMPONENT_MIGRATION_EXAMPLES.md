@@ -9,10 +9,10 @@ This guide shows how to update your existing components from localStorage to Sup
 ```tsx
 "use client";
 import { getProducts } from "@/lib/db";
-import { useAuth } from "@/lib/auth-context";
+// import { useAuth } from "@/lib/auth-context";
 
 export function ProductsPage() {
-  const { user } = useAuth();
+  // const { user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 

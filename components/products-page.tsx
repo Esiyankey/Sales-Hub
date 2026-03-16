@@ -2,20 +2,26 @@
 
 import React from "react";
 
-import { useAuth } from "@/lib/auth-context";
-import {
-  getProducts,
-  addProduct,
-  updateProduct,
-  deleteProduct,
-} from "@/lib/db";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState, useEffect } from "react";
-import type { Product } from "@/lib/db";
+import { createClient } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context-supabase";
+
+type Product = {
+  id: string;
+  userId: string;
+  name: string;
+  costPrice: number;
+  sellingPrice: number;
+  currentStock: number;
+  minimumStock: number;
+  createdAt?: number;
+};
 
 export function ProductsPage() {
   const { user } = useAuth();
+  const supabase = createClient();
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
@@ -30,18 +36,45 @@ export function ProductsPage() {
     minimumStock: 0,
   });
 
+  const loadProducts = async () => {
+    if (!user) return;
+    setIsLoading(true);
+
+    try {
+      const { data, error } = await supabase
+        .from("products")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      const mapped: Product[] = (data || []).map((p: any) => ({
+        id: p.id,
+        userId: p.user_id,
+        name: p.name,
+        costPrice: p.cost_price ?? 0,
+        sellingPrice: p.selling_price ?? 0,
+        currentStock: p.current_stock ?? 0,
+        minimumStock: p.minimum_stock ?? 0,
+        createdAt: p.created_at ? new Date(p.created_at).getTime() : undefined,
+      }));
+      setProducts(mapped);
+    } catch (error) {
+      console.error("Failed to load products:", error);
+      setProducts([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!user) return;
     loadProducts();
-  }, [user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
-  const loadProducts = () => {
-    if (!user) return;
-    setProducts(getProducts(user.id));
-    setIsLoading(false);
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
 
@@ -54,20 +87,43 @@ export function ProductsPage() {
       return;
     }
 
-    if (editingId) {
-      updateProduct(user.id, editingId, formData);
-    } else {
-      addProduct(user.id, {
-        name: formData.name,
-        costPrice: formData.costPrice,
-        sellingPrice: formData.sellingPrice,
-        currentStock: formData.currentStock,
-        minimumStock: formData.minimumStock,
-      });
-    }
+    try {
+      if (editingId) {
+        const { error } = await supabase
+          .from("products")
+          .update({
+            name: formData.name,
+            cost_price: formData.costPrice,
+            selling_price: formData.sellingPrice,
+            current_stock: formData.currentStock,
+            minimum_stock: formData.minimumStock,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", editingId)
+          .eq("user_id", user.id);
 
-    resetForm();
-    loadProducts();
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("products").insert([
+          {
+            user_id: user.id,
+            name: formData.name,
+            cost_price: formData.costPrice,
+            selling_price: formData.sellingPrice,
+            current_stock: formData.currentStock,
+            minimum_stock: formData.minimumStock,
+          },
+        ]);
+
+        if (error) throw error;
+      }
+
+      resetForm();
+      await loadProducts();
+    } catch (error) {
+      console.error("Failed to save product:", error);
+      alert("Failed to save product. Check console for details.");
+    }
   };
 
   const resetForm = () => {
@@ -94,11 +150,22 @@ export function ProductsPage() {
     setIsAdding(true);
   };
 
-  const handleDelete = (productId: string) => {
+  const handleDelete = async (productId: string) => {
     if (!user) return;
-    if (confirm("Are you sure you want to delete this product?")) {
-      deleteProduct(user.id, productId);
-      loadProducts();
+    if (!confirm("Are you sure you want to delete this product?")) return;
+
+    try {
+      const { error } = await supabase
+        .from("products")
+        .delete()
+        .eq("id", productId)
+        .eq("user_id", user.id);
+      if (error) throw error;
+
+      await loadProducts();
+    } catch (error) {
+      console.error("Failed to delete product:", error);
+      alert("Failed to delete product. Check console for details.");
     }
   };
 

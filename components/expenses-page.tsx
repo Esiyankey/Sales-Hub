@@ -2,7 +2,7 @@
 
 import React from "react";
 
-import { useAuth } from "@/lib/auth-context";
+import { useAuth } from "@/lib/auth-context-supabase";
 import { getExpenses, addExpense, deleteExpense } from "@/lib/db";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

@@ -1,11 +1,42 @@
 "use client";
 
-import { useAuth } from "@/lib/auth-context";
-import { getProducts, getSales, addSale } from "@/lib/db";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState, useEffect } from "react";
-import type { Product, Sale } from "@/lib/db";
+import { createClient } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context-supabase";
+
+type Product = {
+  id: string;
+  userId: string;
+  name: string;
+  costPrice: number;
+  sellingPrice: number;
+  currentStock: number;
+  minimumStock: number;
+};
+
+type SaleItem = {
+  productId: string;
+  productName: string;
+  quantity: number;
+  costPrice: number;
+  sellingPrice: number;
+  subtotal: number;
+};
+
+type Sale = {
+  id: string;
+  userId: string;
+  items: SaleItem[];
+  customerName: string;
+  customerPhone?: string;
+  notes?: string;
+  totalCost: number;
+  totalRevenue: number;
+  profit: number;
+  date: number;
+};
 
 interface CartItem {
   productId: string;
@@ -18,6 +49,7 @@ interface CartItem {
 
 export function SalesPage() {
   const { user } = useAuth();
+  const supabase = createClient();
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -33,12 +65,77 @@ export function SalesPage() {
   const [customerPhone, setCustomerPhone] = useState("");
   const [notes, setNotes] = useState("");
 
+  const loadData = async () => {
+    if (!user) return;
+    setIsLoading(true);
+
+    try {
+      const { data: productsData, error: productsError } = await supabase
+        .from("products")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+      if (productsError) throw productsError;
+
+      const mappedProducts: Product[] = (productsData || []).map((p: any) => ({
+        id: p.id,
+        userId: p.user_id,
+        name: p.name,
+        costPrice: p.cost_price ?? 0,
+        sellingPrice: p.selling_price ?? 0,
+        currentStock: p.current_stock ?? 0,
+        minimumStock: p.minimum_stock ?? 0,
+      }));
+      setProducts(mappedProducts);
+
+      // Fetch sales WITH items for UI rendering
+      const { data: salesData, error: salesError } = await supabase
+        .from("sales")
+        .select("*, sale_items(*)")
+        .eq("user_id", user.id)
+        .order("sale_date", { ascending: false });
+      if (salesError) throw salesError;
+
+      const mappedSales: Sale[] = (salesData || []).map((s: any) => ({
+        id: s.id,
+        userId: s.user_id,
+        customerName: s.customer_name ?? "",
+        customerPhone: s.customer_phone ?? undefined,
+        notes: s.notes ?? undefined,
+        totalCost: s.total_cost ?? 0,
+        totalRevenue: s.total_revenue ?? 0,
+        profit:
+          s.total_profit ??
+          Math.max(0, (s.total_revenue ?? 0) - (s.total_cost ?? 0)),
+        date: s.sale_date
+          ? new Date(s.sale_date).getTime()
+          : s.created_at
+            ? new Date(s.created_at).getTime()
+            : Date.now(),
+        items: (s.sale_items || []).map((it: any) => ({
+          productId: it.product_id,
+          productName: it.product_name ?? "",
+          quantity: it.quantity ?? 0,
+          costPrice: it.cost_price ?? 0,
+          sellingPrice: it.selling_price ?? 0,
+          subtotal: it.subtotal ?? (it.selling_price ?? 0) * (it.quantity ?? 0),
+        })),
+      }));
+      setSales(mappedSales);
+    } catch (error) {
+      console.error("Failed to load sales data:", error);
+      setProducts([]);
+      setSales([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!user) return;
-    setProducts(getProducts(user.id));
-    setSales(getSales(user.id));
-    setIsLoading(false);
-  }, [user]);
+    loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   const filteredProducts = products.filter(
     (p) =>
@@ -134,7 +231,7 @@ export function SalesPage() {
     return false;
   });
 
-  const handleCompleteSale = () => {
+  const handleCompleteSale = async () => {
     if (!user) return;
     if (cart.length === 0) {
       alert("Cart is empty");
@@ -145,24 +242,76 @@ export function SalesPage() {
       return;
     }
 
-    addSale(user.id, {
-      items: cart,
-      customerName,
-      customerPhone,
-      notes,
-      totalCost,
-      totalRevenue,
-      profit: totalProfit,
-    });
+    try {
+      // Create sale
+      const { data: sale, error: saleError } = await supabase
+        .from("sales")
+        .insert([
+          {
+            user_id: user.id,
+            customer_name: customerName.trim(),
+            customer_phone: customerPhone.trim() || null,
+            notes: notes.trim() || null,
+            total_cost: totalCost,
+            total_revenue: totalRevenue,
+            // total_profit may be computed by trigger; safe to omit
+          },
+        ])
+        .select("*")
+        .single();
+      if (saleError) throw saleError;
 
-    setSales(getSales(user.id));
-    setCart([]);
-    setCustomerName("");
-    setCustomerPhone("");
-    setNotes("");
-    setIsCreatingSale(false);
-    setProducts(getProducts(user.id));
-    alert("Sale completed successfully!");
+      // Create sale items
+      const saleItemsPayload = cart.map((item) => ({
+        sale_id: sale.id,
+        product_id: item.productId,
+        product_name: item.productName,
+        quantity: item.quantity,
+        cost_price: item.costPrice,
+        selling_price: item.sellingPrice,
+        subtotal: item.subtotal,
+      }));
+
+      const { error: itemsError } = await supabase
+        .from("sale_items")
+        .insert(saleItemsPayload);
+      if (itemsError) throw itemsError;
+
+      // Deduct stock for each product
+      for (const item of cart) {
+        const { data: prodRow, error: prodFetchError } = await supabase
+          .from("products")
+          .select("current_stock")
+          .eq("id", item.productId)
+          .eq("user_id", user.id)
+          .single();
+        if (prodFetchError) throw prodFetchError;
+
+        const currentStock = prodRow?.current_stock ?? 0;
+        const newStock = Math.max(0, currentStock - item.quantity);
+
+        const { error: prodUpdateError } = await supabase
+          .from("products")
+          .update({
+            current_stock: newStock,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", item.productId)
+          .eq("user_id", user.id);
+        if (prodUpdateError) throw prodUpdateError;
+      }
+
+      setCart([]);
+      setCustomerName("");
+      setCustomerPhone("");
+      setNotes("");
+      setIsCreatingSale(false);
+      await loadData();
+      alert("Sale completed successfully!");
+    } catch (error) {
+      console.error("Failed to complete sale:", error);
+      alert("Failed to complete sale. Check console for details.");
+    }
   };
 
   if (isLoading) {

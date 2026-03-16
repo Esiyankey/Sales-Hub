@@ -1,6 +1,6 @@
 "use client";
 
-import { useAuth } from "@/lib/auth-context";
+import { useAuth } from "@/lib/auth-context-supabase";
 import { getSales, getExpenses } from "@/lib/db";
 import { useState, useEffect } from "react";
 

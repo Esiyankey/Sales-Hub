@@ -2,7 +2,7 @@
 
 import React from "react";
 
-import { useAuth } from "@/lib/auth-context";
+import { useAuth } from "@/lib/auth-context-supabase";
 import {
   updateUser,
   exportUserData,

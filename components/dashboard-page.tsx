@@ -1,6 +1,5 @@
 "use client";
 
-import { useAuth } from "@/lib/auth-context";
 import {
   getSales,
   getProducts,
@@ -13,6 +12,7 @@ import {
   getTotalExpenses,
 } from "@/lib/db";
 import { useState, useEffect } from "react";
+import { useAuth } from "@/lib/auth-context-supabase";
 
 interface DashboardStats {
   // Today's Stats
@@ -141,7 +141,7 @@ export function DashboardPage() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-foreground mb-2">Dashboard</h1>
           <p className="text-muted-foreground">
-            Welcome back, {user?.businessName}! Here's your business overview.
+            Welcome back{user?.email ? `, ${user.email}` : ""}! Here's your business overview.
           </p>
         </div>
 

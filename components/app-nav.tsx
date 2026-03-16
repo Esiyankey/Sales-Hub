@@ -2,7 +2,7 @@
 
 import React from "react"
 
-import { useAuth } from '@/lib/auth-context';
+// import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useState } from 'react';
@@ -90,7 +90,7 @@ const navItems: NavItem[] = [
 ];
 
 export function AppNav() {
-  const { user, logout } = useAuth();
+  // const { user, logout } = useAuth();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
   return (
@@ -106,7 +106,8 @@ export function AppNav() {
             </div>
             <div>
               <h1 className="font-bold text-sidebar-foreground text-lg">SalesHub</h1>
-              <p className="text-xs text-sidebar-foreground/60">{user?.businessName}</p>
+              <p className="text-xs text-sidebar-foreground/60"></p>
+              {/* {user?.businessName} */}
             </div>
           </div>
         </div>
@@ -126,7 +127,7 @@ export function AppNav() {
 
         <div className="p-4 border-t border-sidebar-border">
           <Button
-            onClick={logout}
+            // onClick={logout}
             className="w-full bg-destructive text-white hover:bg-destructive/90 rounded-lg font-medium"
           >
             Logout
@@ -173,7 +174,7 @@ export function AppNav() {
           <div className="absolute bottom-4 left-4 right-4">
             <Button
               onClick={() => {
-                logout();
+                // logout();
                 setIsMobileOpen(false);
               }}
               className="w-full bg-destructive text-white hover:bg-destructive/90 rounded-lg font-medium"

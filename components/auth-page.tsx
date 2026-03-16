@@ -37,7 +37,8 @@ export function AuthPage() {
         if (!loginSuccess) {
           setError("Invalid email or password");
         } else {
-          router.replace("/sales"); // ✅ Redirect after login
+          router.replace("/products");
+           window.location.reload(); // ✅ Redirect after login
         }
       } else {
         // REGISTER

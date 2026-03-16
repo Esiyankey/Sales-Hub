@@ -1,9 +1,9 @@
 'use client';
 
-import { useAuth } from '@/lib/auth-context';
 import { AuthPage } from '@/components/auth-page';
 import { AppNav } from '@/components/app-nav';
 import { ProfitPage } from '@/components/profit-page';
+import { useAuth } from '@/lib/auth-context-supabase';
 
 export default function ProfitRoute() {
   const { user, isLoading } = useAuth();
