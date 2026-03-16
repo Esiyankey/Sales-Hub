@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { AuthProviderSupabase } from "@/lib/auth-context-supabase";
+import { MobileNav } from "@/components/MobileNav";
 import "./globals.css";
 // import { AuthProvider } from "@/lib/auth-context";
 
@@ -42,7 +43,12 @@ export default function RootLayout({
     <html lang="en">
       <body className={`font-sans antialiased`}>
         {/* <AuthProvider> */}
-          <AuthProviderSupabase>{children}</AuthProviderSupabase>
+          <AuthProviderSupabase>
+            <div className="min-h-screen pb-[calc(env(safe-area-inset-bottom)+88px)] md:pb-0">
+              {children}
+            </div>
+            <MobileNav />
+          </AuthProviderSupabase>
           <Analytics />
         {/* </AuthProvider> */}
       </body>

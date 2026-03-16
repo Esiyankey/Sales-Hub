@@ -185,21 +185,6 @@ export function AppNav() {
         </div>
       )}
 
-      {/* Mobile Bottom Navigation */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 h-20 bg-sidebar border-t border-sidebar-border">
-        <div className="flex h-full justify-around items-center">
-          {navItems.slice(0, 5).map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="flex flex-col items-center justify-center w-full h-full text-sidebar-foreground hover:bg-sidebar-accent/20 transition-colors"
-            >
-              <span className="text-sidebar-accent">{item.icon}</span>
-              <span className="text-xs mt-1">{item.label.split(' ')[0]}</span>
-            </Link>
-          ))}
-        </div>
-      </div>
     </>
   );
 }
