@@ -33,15 +33,18 @@ export function AuthProviderSupabase({
   const supabase = createClient();
 
   useEffect(() => {
+    let mounted = true;
     const checkUser = async () => {
       try {
         const {
           data: { session },
         } = await supabase.auth.getSession();
+        if (!mounted) return;
         setUser(session?.user || null);
         setIsLoading(false);
       } catch (error) {
         console.error("Error checking session:", error);
+        if (!mounted) return;
         setIsLoading(false);
       }
     };
@@ -51,10 +54,14 @@ export function AuthProviderSupabase({
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
       setUser(session?.user || null);
     });
 
-    return () => subscription?.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription?.unsubscribe();
+    };
   }, []);
 
   const login = async (

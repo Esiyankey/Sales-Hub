@@ -36,17 +36,19 @@ export function ProductsPage() {
     minimumStock: 0,
   });
 
-  const loadProducts = async () => {
+  const loadProducts = async (opts?: { signal?: AbortSignal }) => {
     if (!user) return;
     setIsLoading(true);
 
     try {
+      if (opts?.signal?.aborted) return;
       const { data, error } = await supabase
         .from("products")
         .select("*")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
 
+      if (opts?.signal?.aborted) return;
       if (error) throw error;
 
       const mapped: Product[] = (data || []).map((p: any) => ({
@@ -70,7 +72,9 @@ export function ProductsPage() {
 
   useEffect(() => {
     if (!user) return;
-    loadProducts();
+    const controller = new AbortController();
+    loadProducts({ signal: controller.signal });
+    return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 

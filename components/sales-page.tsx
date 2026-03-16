@@ -65,11 +65,12 @@ export function SalesPage() {
   const [customerPhone, setCustomerPhone] = useState("");
   const [notes, setNotes] = useState("");
 
-  const loadData = async () => {
+  const loadData = async (opts?: { signal?: AbortSignal }) => {
     if (!user) return;
     setIsLoading(true);
 
     try {
+      if (opts?.signal?.aborted) return;
       const { data: productsData, error: productsError } = await supabase
         .from("products")
         .select("*")
@@ -77,6 +78,7 @@ export function SalesPage() {
         .order("created_at", { ascending: false });
       if (productsError) throw productsError;
 
+      if (opts?.signal?.aborted) return;
       const mappedProducts: Product[] = (productsData || []).map((p: any) => ({
         id: p.id,
         userId: p.user_id,
@@ -96,6 +98,7 @@ export function SalesPage() {
         .order("sale_date", { ascending: false });
       if (salesError) throw salesError;
 
+      if (opts?.signal?.aborted) return;
       const mappedSales: Sale[] = (salesData || []).map((s: any) => ({
         id: s.id,
         userId: s.user_id,
@@ -133,7 +136,9 @@ export function SalesPage() {
 
   useEffect(() => {
     if (!user) return;
-    loadData();
+    const controller = new AbortController();
+    loadData({ signal: controller.signal });
+    return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 

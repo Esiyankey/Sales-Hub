@@ -11,7 +11,7 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  manifest: "/manifest.json",
+  manifest: "/manifest.webmanifest",
   title: "SalesHub - Business Management System",
   description:
     "Complete business management system for inventory, sales, and financial tracking",
@@ -19,15 +19,15 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       {
-        url: "/icon192.png",
+        url: "/icon.svg",
         media: "(prefers-color-scheme: light)",
       },
       {
-        url: "/icon512.png",
-          media: "(prefers-color-scheme: light)",
+        url: "/icon.svg",
+        media: "(prefers-color-scheme: light)",
       },
     ],
-    apple: "/icon192.png",
+    apple: "/icon.svg",
   },
 };
 export const viewport = {

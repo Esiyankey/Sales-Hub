@@ -9,12 +9,15 @@ function isPublicPath(pathname: string) {
 
   // PWA/service worker + static assets must never be blocked
   if (pathname === "/manifest.json") return true;
+  if (pathname === "/manifest.webmanifest") return true;
   if (pathname === "/favicon.ico") return true;
   if (pathname.startsWith("/_next")) return true;
   if (pathname.startsWith("/icons")) return true;
   if (pathname.startsWith("/images")) return true;
+  if (pathname.startsWith("/icon")) return true; // icon192.png, icon512.png, etc
   if (pathname.startsWith("/workbox")) return true;
   if (pathname.startsWith("/sw")) return true;
+  if (pathname === "/sw.js") return true;
   if (pathname.startsWith("/service-worker")) return true;
   if (PUBLIC_FILE.test(pathname)) return true;
 
