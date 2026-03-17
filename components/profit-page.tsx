@@ -3,18 +3,18 @@
 import React from "react";
 
 import { useAuth } from "@/lib/auth-context-supabase";
-import {
-  getSales,
-  getExpenses,
-  getProfitDistributions,
-  addProfitDistribution,
-} from "@/lib/db";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase";
+import {
+  addProfitDistributionSupabase,
+  getProfitDistributionsSupabase,
+} from "@/lib/supabase-service";
 
 export function ProfitPage() {
   const { user } = useAuth();
+  const supabase = createClient();
   const [currentMonth, setCurrentMonth] = useState(
     new Date().toISOString().slice(0, 7),
   );
@@ -42,44 +42,50 @@ export function ProfitPage() {
   useEffect(() => {
     if (!user) return;
     calculateMonthProfit();
-  }, [user, currentMonth]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, currentMonth]);
 
-  const calculateMonthProfit = () => {
+  const calculateMonthProfit = async () => {
     if (!user) return;
 
-    const sales = getSales(user.id);
-    const expenses = getExpenses(user.id);
+    setIsLoading(true);
+    try {
+      const from = new Date(currentMonth + "-01T00:00:00.000Z");
+      const to = new Date(from);
+      to.setMonth(to.getMonth() + 1);
 
-    const filterMonthDate = new Date(currentMonth + "-01");
-    const monthSales = sales.filter((s) => {
-      const saleDate = new Date(s.date);
-      return (
-        saleDate.getMonth() === filterMonthDate.getMonth() &&
-        saleDate.getFullYear() === filterMonthDate.getFullYear()
+      const { data: salesData, error: salesError } = await supabase
+        .from("sales")
+        .select("total_revenue,total_cost,sale_date")
+        .eq("user_id", user.id)
+        .gte("sale_date", from.toISOString())
+        .lt("sale_date", to.toISOString());
+      if (salesError) throw salesError;
+
+      const { data: expData, error: expError } = await supabase
+        .from("expenses")
+        .select("amount,category,expense_date")
+        .eq("user_id", user.id)
+        .gte("expense_date", from.toISOString())
+        .lt("expense_date", to.toISOString());
+      if (expError) throw expError;
+
+      const totalRevenue = (salesData || []).reduce(
+        (sum: number, s: any) => sum + Number(s.total_revenue ?? 0),
+        0,
       );
-    });
-
-    const monthExpenses = expenses.filter((e) => {
-      const expDate = new Date(e.date);
-      return (
-        expDate.getMonth() === filterMonthDate.getMonth() &&
-        expDate.getFullYear() === filterMonthDate.getFullYear()
+      const totalCostFromSales = (salesData || []).reduce(
+        (sum: number, s: any) => sum + Number(s.total_cost ?? 0),
+        0,
       );
-    });
-
-    const totalRevenue = monthSales.reduce((sum, s) => sum + s.totalRevenue, 0);
-    const totalCostFromSales = monthSales.reduce(
-      (sum, s) => sum + s.totalCost,
-      0,
-    );
 
     // Treat restocking (category: 'stock') as COGS, transportation and others as operating expenses
-    const restockingCosts = monthExpenses
-      .filter((e) => e.category === "stock")
-      .reduce((sum, e) => sum + e.amount, 0);
-    const operatingExpenses = monthExpenses
-      .filter((e) => e.category !== "stock")
-      .reduce((sum, e) => sum + e.amount, 0);
+      const restockingCosts = (expData || [])
+        .filter((e: any) => e.category === "stock")
+        .reduce((sum: number, e: any) => sum + Number(e.amount ?? 0), 0);
+      const operatingExpenses = (expData || [])
+        .filter((e: any) => e.category !== "stock")
+        .reduce((sum: number, e: any) => sum + Number(e.amount ?? 0), 0);
 
     // Total COGS = costs recorded on sales + restocking costs entered as expenses
     const totalCOGS = totalCostFromSales + restockingCosts;
@@ -112,24 +118,26 @@ export function ProfitPage() {
     });
 
     // Load distributions
-    const dists = getProfitDistributions(user.id);
-    const filterMonth = new Date(currentMonth + "-01");
-    const monthDists = dists.filter(
-      (d) =>
-        d.month === filterMonth.getMonth() &&
-        d.year === filterMonth.getFullYear(),
-    );
+      const dists = await getProfitDistributionsSupabase(user.id);
+      const filterMonth = new Date(currentMonth + "-01");
+      const monthDists = (dists || []).filter(
+        (d: any) =>
+          d.month === filterMonth.getMonth() && d.year === filterMonth.getFullYear(),
+      );
     setDistributions(monthDists);
-
-    setIsLoading(false);
+    } catch (error) {
+      console.error("Failed to calculate month profit:", error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleDistribute = (e: React.FormEvent) => {
+  const handleDistribute = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
 
     const filterMonthDate = new Date(currentMonth + "-01");
-    addProfitDistribution(user.id, {
+    const created = await addProfitDistributionSupabase(user.id, {
       month: filterMonthDate.getMonth(),
       year: filterMonthDate.getFullYear(),
       totalProfit: monthData.totalProfit,
@@ -140,7 +148,12 @@ export function ProfitPage() {
       notes: formData.notes,
     });
 
-    calculateMonthProfit();
+    if (!created) {
+      alert("Failed to record distribution. Check console for details.");
+      return;
+    }
+
+    await calculateMonthProfit();
     setIsAdding(false);
     alert("Profit distribution recorded successfully!");
   };

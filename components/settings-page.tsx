@@ -3,23 +3,32 @@
 import React from "react";
 
 import { useAuth } from "@/lib/auth-context-supabase";
-import {
-  updateUser,
-  exportUserData,
-  importUserData,
-  clearAllData,
-} from "@/lib/db";
+import { getUserProfileSupabase, updateUserProfileSupabase } from "@/lib/supabase-service";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export function SettingsPage() {
   const { user } = useAuth();
-  const [businessName, setBusinessName] = useState(user?.businessName || "");
+  const [businessName, setBusinessName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState("");
 
-  const handleSaveSettings = () => {
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      if (!user) return;
+      const profile = await getUserProfileSupabase(user.id);
+      if (!mounted) return;
+      setBusinessName(profile?.business_name || "");
+    };
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, [user?.id]);
+
+  const handleSaveSettings = async () => {
     if (!user) return;
     if (!businessName.trim()) {
       setMessage("Business name cannot be empty");
@@ -27,64 +36,18 @@ export function SettingsPage() {
     }
 
     setIsSaving(true);
-    updateUser(user.id, businessName);
-    setMessage("Settings saved successfully!");
-    setTimeout(() => setMessage(""), 3000);
-    setIsSaving(false);
-  };
-
-  const handleExport = () => {
-    if (!user) return;
-    const data = exportUserData(user.id);
-    const element = document.createElement("a");
-    element.setAttribute(
-      "href",
-      "data:text/plain;charset=utf-8," + encodeURIComponent(data),
-    );
-    element.setAttribute(
-      "download",
-      `saleshub_backup_${new Date().toISOString().split("T")[0]}.json`,
-    );
-    element.style.display = "none";
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
-    setMessage("Data exported successfully!");
-    setTimeout(() => setMessage(""), 3000);
-  };
-
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const content = event.target?.result as string;
-        importUserData(content);
-        setMessage("Data imported successfully!");
-        setTimeout(() => setMessage(""), 3000);
-      } catch (error) {
-        setMessage("Failed to import data. Please check the file format.");
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const handleClearData = () => {
-    if (
-      confirm(
-        'Are you absolutely sure you want to delete ALL your data? This action cannot be undone. Type "YES" in the prompt to confirm.',
-      )
-    ) {
-      const confirmation = prompt('Type "YES" to confirm:');
-      if (confirmation === "YES") {
-        clearAllData();
-        setMessage("All data has been cleared.");
-        setTimeout(() => {
-          window.location.reload();
-        }, 2000);
-      }
+    try {
+      const updated = await updateUserProfileSupabase(user.id, {
+        business_name: businessName.trim(),
+      });
+      if (!updated) throw new Error("Failed to update profile");
+      setMessage("Settings saved successfully!");
+      setTimeout(() => setMessage(""), 3000);
+    } catch (error) {
+      console.error(error);
+      setMessage("Failed to save settings. Please try again.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -140,11 +103,12 @@ export function SettingsPage() {
           <div className="space-y-4">
             <div>
               <p className="text-sm text-muted-foreground mb-3">
-                Export your business data as a JSON file for backup or transfer
-                to another device.
+                Data import/export is being refactored to Supabase-first
+                workflows (multi-device safe). This section will be re-enabled
+                once server-side exports are implemented.
               </p>
               <Button
-                onClick={handleExport}
+                disabled
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg"
               >
                 <svg
@@ -166,20 +130,20 @@ export function SettingsPage() {
 
             <div className="border-t border-border pt-4">
               <p className="text-sm text-muted-foreground mb-3">
-                Import a previously exported data file to restore or migrate
-                your business data.
+                Import will be re-enabled after we implement business-scoped
+                exports with validation.
               </p>
               <div className="relative">
                 <input
                   type="file"
                   accept=".json"
-                  onChange={handleImport}
+                  disabled
                   className="hidden"
                   id="import-file"
                 />
                 <label
                   htmlFor="import-file"
-                  className="block w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-center font-semibold rounded-lg cursor-pointer transition-colors"
+                  className="block w-full px-4 py-2 bg-green-600/50 text-white text-center font-semibold rounded-lg cursor-not-allowed"
                 >
                   <svg
                     className="w-4 h-4 mr-2 inline"
@@ -205,11 +169,11 @@ export function SettingsPage() {
         <div className="bg-red-50 border border-red-200 rounded-2xl p-6">
           <h2 className="text-xl font-bold text-red-700 mb-4">Danger Zone</h2>
           <p className="text-sm text-red-600 mb-4">
-            Clear all your business data. This action is permanent and cannot be
-            undone.
+            Destructive operations are being moved to server-side, business-scoped
+            controls. This will be re-enabled after role-based permissions are added.
           </p>
           <Button
-            onClick={handleClearData}
+            disabled
             className="w-full bg-destructive text-white font-semibold rounded-lg hover:opacity-90"
           >
             <svg
@@ -232,9 +196,9 @@ export function SettingsPage() {
         {/* Info */}
         <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
           <p className="text-sm text-blue-900">
-            <strong>Info:</strong> All your data is stored locally in your
-            browser and is never sent to any server. You have complete control
-            over your data.
+            <strong>Info:</strong> Your data is stored in Supabase and secured
+            by Row Level Security (RLS). Multi-business roles and audit logging
+            are the next steps in this refactor.
           </p>
         </div>
       </div>

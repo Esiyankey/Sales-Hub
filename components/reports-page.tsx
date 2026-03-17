@@ -1,11 +1,28 @@
 "use client";
 
 import { useAuth } from "@/lib/auth-context-supabase";
-import { getSales, getExpenses } from "@/lib/db";
 import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase";
+
+type Sale = {
+  id: string;
+  customerName: string;
+  totalRevenue: number;
+  totalCost: number;
+  date: number;
+  items: Array<{ productName: string; subtotal: number }>;
+};
+
+type Expense = {
+  id: string;
+  category: string;
+  amount: number;
+  date: number;
+};
 
 export function ReportsPage() {
   const { user } = useAuth();
+  const supabase = createClient();
   const [filterMonth, setFilterMonth] = useState(
     new Date().toISOString().slice(0, 7),
   );
@@ -24,85 +41,116 @@ export function ReportsPage() {
 
   useEffect(() => {
     if (!user) return;
+    let mounted = true;
 
-    const sales = getSales(user.id);
-    const expenses = getExpenses(user.id);
+    const load = async () => {
+      setIsLoading(true);
+      try {
+        const from = new Date(filterMonth + "-01T00:00:00.000Z");
+        const to = new Date(from);
+        to.setMonth(to.getMonth() + 1);
 
-    const filterMonthDate = new Date(filterMonth + "-01");
-    const monthSales = sales.filter((s) => {
-      const saleDate = new Date(s.date);
-      return (
-        saleDate.getMonth() === filterMonthDate.getMonth() &&
-        saleDate.getFullYear() === filterMonthDate.getFullYear()
-      );
-    });
+        const { data: salesData, error: salesError } = await supabase
+          .from("sales")
+          .select("*, sale_items(*)")
+          .eq("user_id", user.id)
+          .gte("sale_date", from.toISOString())
+          .lt("sale_date", to.toISOString())
+          .order("sale_date", { ascending: false });
+        if (salesError) throw salesError;
 
-    const monthExpenses = expenses.filter((e) => {
-      const expDate = new Date(e.date);
-      return (
-        expDate.getMonth() === filterMonthDate.getMonth() &&
-        expDate.getFullYear() === filterMonthDate.getFullYear()
-      );
-    });
+        const sales: Sale[] = (salesData || []).map((s: any) => ({
+          id: s.id,
+          customerName: s.customer_name ?? "",
+          totalRevenue: Number(s.total_revenue ?? 0),
+          totalCost: Number(s.total_cost ?? 0),
+          date: s.sale_date ? new Date(s.sale_date).getTime() : Date.now(),
+          items: (s.sale_items || []).map((it: any) => ({
+            productName: it.product_name ?? "",
+            subtotal: Number(it.subtotal ?? 0),
+          })),
+        }));
 
-    const totalRevenue = monthSales.reduce((sum, s) => sum + s.totalRevenue, 0);
-    const totalCostFromSales = monthSales.reduce(
-      (sum, s) => sum + s.totalCost,
-      0,
-    );
+        const { data: expData, error: expError } = await supabase
+          .from("expenses")
+          .select("*")
+          .eq("user_id", user.id)
+          .gte("expense_date", from.toISOString())
+          .lt("expense_date", to.toISOString())
+          .order("expense_date", { ascending: false });
+        if (expError) throw expError;
 
-    // Restocking (category: 'stock') treated as COGS; transportation and others are operating expenses
-    const restockingCosts = monthExpenses
-      .filter((e) => e.category === "stock")
-      .reduce((sum, e) => sum + e.amount, 0);
-    const transportationCosts = monthExpenses
-      .filter((e) => e.category === "transportation")
-      .reduce((sum, e) => sum + e.amount, 0);
+        const expenses: Expense[] = (expData || []).map((e: any) => ({
+          id: e.id,
+          category: e.category,
+          amount: Number(e.amount ?? 0),
+          date: e.expense_date ? new Date(e.expense_date).getTime() : Date.now(),
+        }));
 
-    const otherExpenses = monthExpenses
-      .filter((e) => e.category !== "stock" && e.category !== "transportation")
-      .reduce((sum, e) => sum + e.amount, 0);
+        const totalRevenue = sales.reduce((sum, s) => sum + s.totalRevenue, 0);
+        const totalCostFromSales = sales.reduce((sum, s) => sum + s.totalCost, 0);
 
-    // totalCost displayed in the UI = cost from sales minus restocking (as requested)
-    const totalCost = totalCostFromSales - restockingCosts;
+        // Restocking (category: 'stock') treated as COGS; transportation and others are operating expenses
+        const restockingCosts = expenses
+          .filter((e) => e.category === "stock")
+          .reduce((sum, e) => sum + e.amount, 0);
+        const transportationCosts = expenses
+          .filter((e) => e.category === "transportation")
+          .reduce((sum, e) => sum + e.amount, 0);
 
-    // Stock & Transportation shown together
-    const stockAndTransport = restockingCosts + transportationCosts;
+        const otherExpenses = expenses
+          .filter((e) => e.category !== "stock" && e.category !== "transportation")
+          .reduce((sum, e) => sum + e.amount, 0);
 
-    const totalCOGS = totalCostFromSales + restockingCosts;
-    const grossProfit = totalRevenue - totalCOGS;
-    const netProfit = grossProfit - otherExpenses;
-    const profitMargin =
-      totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
+        // totalCost displayed in the UI = cost from sales minus restocking (as requested)
+        const totalCost = totalCostFromSales - restockingCosts;
 
-    // Best products
-    const productSales: { [key: string]: number } = {};
-    monthSales.forEach((sale) => {
-      sale.items.forEach((item) => {
-        productSales[item.productName] =
-          (productSales[item.productName] || 0) + item.subtotal;
-      });
-    });
+        // Stock & Transportation shown together
+        const stockAndTransport = restockingCosts + transportationCosts;
 
-    const bestProducts = Object.entries(productSales)
-      .map(([name, revenue]) => ({ name, revenue }))
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 5);
+        const totalCOGS = totalCostFromSales + restockingCosts;
+        const grossProfit = totalRevenue - totalCOGS;
+        const netProfit = grossProfit - otherExpenses;
+        const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
-    setStats({
-      totalRevenue,
-      totalCost,
-      grossProfit,
-      stockAndTransport,
-      otherExpenses,
-      netProfit,
-      profitMargin,
-      totalSales: monthSales.length,
-      bestProducts,
-    });
+        // Best products
+        const productSales: { [key: string]: number } = {};
+        sales.forEach((sale) => {
+          sale.items.forEach((item) => {
+            productSales[item.productName] =
+              (productSales[item.productName] || 0) + item.subtotal;
+          });
+        });
 
-    setIsLoading(false);
-  }, [user, filterMonth]);
+        const bestProducts = Object.entries(productSales)
+          .map(([name, revenue]) => ({ name, revenue }))
+          .sort((a, b) => b.revenue - a.revenue)
+          .slice(0, 5);
+
+        if (!mounted) return;
+        setStats({
+          totalRevenue,
+          totalCost,
+          grossProfit,
+          stockAndTransport,
+          otherExpenses,
+          netProfit,
+          profitMargin,
+          totalSales: sales.length,
+          bestProducts,
+        });
+      } catch (error) {
+        console.error("Failed to load reports:", error);
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, [user?.id, filterMonth]);
 
   if (isLoading) {
     return (

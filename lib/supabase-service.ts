@@ -18,6 +18,53 @@ const supabase = createClient();
 // TYPE DEFINITIONS
 // ============================================
 
+export interface SupabaseUserProfile {
+  id: string;
+  username: string;
+  business_name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getUserProfileSupabase(
+  userId: string,
+): Promise<SupabaseUserProfile | null> {
+  try {
+    const { data, error } = await supabase
+      .from("user_profiles")
+      .select("*")
+      .eq("id", userId)
+      .single();
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error("Error fetching user profile:", error);
+    return null;
+  }
+}
+
+export async function updateUserProfileSupabase(
+  userId: string,
+  updates: Partial<Pick<SupabaseUserProfile, "username" | "business_name">>,
+): Promise<SupabaseUserProfile | null> {
+  try {
+    const { data, error } = await supabase
+      .from("user_profiles")
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", userId)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error("Error updating user profile:", error);
+    return null;
+  }
+}
+
 export interface SupabaseProduct {
   id: string;
   user_id: string;
@@ -72,6 +119,18 @@ export interface SupabaseExpense {
   notes?: string;
   created_at: string;
   expense_date: string;
+}
+
+export interface SupabaseDebtor {
+  id: string;
+  user_id: string;
+  name: string;
+  amount: number;
+  phone?: string;
+  description?: string;
+  status: "pending" | "partial" | "cleared";
+  created_at: string;
+  updated_at: string;
 }
 
 // ============================================
@@ -345,6 +404,63 @@ export async function getSalesSupabase(
   }
 }
 
+/**
+ * DELETE SALE (Rollback Stock)
+ *
+ * Real-world requirement: if a sale was recorded by mistake, deleting it must
+ * restore inventory quantities for all sold items.
+ */
+export async function deleteSaleSupabase(
+  userId: string,
+  saleId: string,
+): Promise<boolean> {
+  try {
+    // Fetch items first (they'll be cascade-deleted with the sale)
+    const { data: items, error: itemsError } = await supabase
+      .from("sale_items")
+      .select("product_id, quantity")
+      .eq("sale_id", saleId);
+    if (itemsError) throw itemsError;
+
+    // Roll back stock
+    for (const item of items || []) {
+      const productId = (item as any).product_id as string;
+      const qty = (item as any).quantity as number;
+
+      const { data: prod, error: prodError } = await supabase
+        .from("products")
+        .select("current_stock")
+        .eq("id", productId)
+        .eq("user_id", userId)
+        .single();
+      if (prodError) throw prodError;
+
+      const current = (prod as any)?.current_stock ?? 0;
+      const next = current + (qty || 0);
+
+      const { error: updError } = await supabase
+        .from("products")
+        .update({ current_stock: next, updated_at: new Date().toISOString() })
+        .eq("id", productId)
+        .eq("user_id", userId);
+      if (updError) throw updError;
+    }
+
+    // Delete the sale (cascade deletes sale_items)
+    const { error: delError } = await supabase
+      .from("sales")
+      .delete()
+      .eq("id", saleId)
+      .eq("user_id", userId);
+    if (delError) throw delError;
+
+    return true;
+  } catch (error) {
+    console.error("Error deleting sale:", error);
+    return false;
+  }
+}
+
 export async function getSaleDetailsSupabase(
   userId: string,
   saleId: string,
@@ -584,8 +700,11 @@ export async function calculateTotalProfitSupabase(
 
 export async function addDebtorSupabase(
   userId: string,
-  debtor: Omit<SupabaseExpense, "id" | "user_id" | "created_at">,
-): Promise<any | null> {
+  debtor: Omit<
+    SupabaseDebtor,
+    "id" | "user_id" | "created_at" | "updated_at"
+  >,
+): Promise<SupabaseDebtor | null> {
   try {
     const { data, error } = await supabase
       .from("debtors")
@@ -606,7 +725,7 @@ export async function addDebtorSupabase(
   }
 }
 
-export async function getDebtorsSupabase(userId: string): Promise<any[]> {
+export async function getDebtorsSupabase(userId: string): Promise<SupabaseDebtor[]> {
   try {
     const { data, error } = await supabase
       .from("debtors")
@@ -625,8 +744,8 @@ export async function getDebtorsSupabase(userId: string): Promise<any[]> {
 export async function updateDebtorSupabase(
   userId: string,
   debtorId: string,
-  updates: any,
-): Promise<any | null> {
+  updates: Partial<Omit<SupabaseDebtor, "id" | "user_id" | "created_at">>,
+): Promise<SupabaseDebtor | null> {
   try {
     const { data, error } = await supabase
       .from("debtors")

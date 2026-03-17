@@ -3,11 +3,24 @@
 import React from "react";
 
 import { useAuth } from "@/lib/auth-context-supabase";
-import { getExpenses, addExpense, deleteExpense } from "@/lib/db";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState, useEffect } from "react";
-import type { Expense } from "@/lib/db";
+import {
+  addExpenseSupabase,
+  getExpensesSupabase,
+  deleteExpenseSupabase,
+} from "@/lib/supabase-service";
+
+type Expense = {
+  id: string;
+  userId: string;
+  title: string;
+  amount: number;
+  category: string;
+  notes?: string;
+  date: number;
+};
 
 const EXPENSE_CATEGORIES = [
   {
@@ -54,16 +67,40 @@ export function ExpensesPage() {
 
   useEffect(() => {
     if (!user) return;
-    loadExpenses();
-  }, [user]);
+    const controller = new AbortController();
+    loadExpenses({ signal: controller.signal });
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
-  const loadExpenses = () => {
+  const loadExpenses = async (opts?: { signal?: AbortSignal }) => {
     if (!user) return;
-    setExpenses(getExpenses(user.id));
-    setIsLoading(false);
+    setIsLoading(true);
+    try {
+      if (opts?.signal?.aborted) return;
+      const data = await getExpensesSupabase(user.id);
+      if (opts?.signal?.aborted) return;
+      const mapped: Expense[] = (data || []).map((e: any) => ({
+        id: e.id,
+        userId: e.user_id,
+        title: e.title,
+        amount: Number(e.amount ?? 0),
+        category: e.category,
+        notes: e.notes ?? undefined,
+        date: e.expense_date
+          ? new Date(e.expense_date).getTime()
+          : new Date(e.created_at).getTime(),
+      }));
+      setExpenses(mapped);
+    } catch (error) {
+      console.error("Failed to load expenses:", error);
+      setExpenses([]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
 
@@ -72,16 +109,22 @@ export function ExpensesPage() {
       return;
     }
 
-    addExpense(user.id, {
-      title: formData.title,
-      amount: formData.amount,
-      category: formData.category,
-      notes: formData.notes,
-      date: new Date(formData.date).getTime(),
-    });
+    try {
+      const created = await addExpenseSupabase(user.id, {
+        title: formData.title,
+        amount: formData.amount,
+        category: formData.category as any,
+        notes: formData.notes || undefined,
+        expense_date: new Date(formData.date).toISOString(),
+      } as any);
 
-    resetForm();
-    loadExpenses();
+      if (!created) throw new Error("Expense create failed");
+      resetForm();
+      await loadExpenses();
+    } catch (error) {
+      console.error("Failed to add expense:", error);
+      alert("Failed to add expense. Check console for details.");
+    }
   };
 
   const resetForm = () => {
@@ -95,11 +138,15 @@ export function ExpensesPage() {
     setIsAdding(false);
   };
 
-  const handleDelete = (expenseId: string) => {
+  const handleDelete = async (expenseId: string) => {
     if (!user) return;
     if (confirm("Are you sure you want to delete this expense?")) {
-      deleteExpense(user.id, expenseId);
-      loadExpenses();
+      const ok = await deleteExpenseSupabase(user.id, expenseId);
+      if (!ok) {
+        alert("Failed to delete expense. Check console for details.");
+        return;
+      }
+      await loadExpenses();
     }
   };
 
