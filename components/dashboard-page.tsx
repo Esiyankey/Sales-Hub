@@ -1,18 +1,15 @@
 "use client";
 
-import {
-  getSales,
-  getProducts,
-  getExpenses,
-  getDailyStats,
-  getMonthlyStats,
-  getTotalInventoryValue,
-  getTotalCOGS,
-  getTotalRevenue,
-  getTotalExpenses,
-} from "@/lib/db";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context-supabase";
+import {
+  calculateTotalProfitSupabase,
+  getProductsSupabase,
+  getTotalCOGSSupabase,
+  getTotalExpensesSupabase,
+  getTotalInventoryValueSupabase,
+  getTotalRevenueSupabase,
+} from "@/lib/supabase-service";
 
 interface DashboardStats {
   // Today's Stats
@@ -68,52 +65,65 @@ export function DashboardPage() {
 
   useEffect(() => {
     if (!user) return;
+    let mounted = true;
 
-    const products = getProducts(user.id);
+    const load = async () => {
+      setIsLoading(true);
+      try {
+        const [products, totalRevenue, totalCOGS, totalExpenses, totalProfit, inventoryValue] =
+          await Promise.all([
+            getProductsSupabase(user.id),
+            getTotalRevenueSupabase(user.id),
+            getTotalCOGSSupabase(user.id),
+            getTotalExpensesSupabase(user.id),
+            calculateTotalProfitSupabase(user.id),
+            getTotalInventoryValueSupabase(user.id),
+          ]);
 
-    // Get daily stats
-    const dailyStats = getDailyStats(user.id);
+        if (!mounted) return;
 
-    // Get monthly stats
-    const monthlyStats = getMonthlyStats(user.id);
+        const lowStockItems = (products || [])
+          .map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            currentStock: p.current_stock ?? 0,
+            minimumStock: p.minimum_stock ?? 0,
+          }))
+          .filter((p: any) => p.currentStock <= p.minimumStock);
 
-    // Get overall stats
-    const totalRevenue = getTotalRevenue(user.id);
-    const totalCOGS = getTotalCOGS(user.id);
-    const totalExpenses = getTotalExpenses(user.id);
-    const totalProfit = totalRevenue - totalCOGS - totalExpenses;
+        // NOTE: Daily/monthly rollups will be implemented as server-side SQL views/functions next.
+        setStats({
+          todayRevenue: 0,
+          todayCOGS: 0,
+          todayExpenses: 0,
+          todayProfit: 0,
+          todayItemsSold: 0,
+          monthRevenue: 0,
+          monthCOGS: 0,
+          monthExpenses: 0,
+          monthProfit: 0,
+          monthItemsSold: 0,
+          inventoryValue,
+          activeProducts: (products || []).length,
+          lowStockCount: lowStockItems.length,
+          lowStockItems: lowStockItems.slice(0, 5),
+          totalRevenue,
+          totalCOGS,
+          totalExpenses,
+          totalProfit,
+        });
+      } catch (error) {
+        console.error("Failed to load dashboard:", error);
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    };
 
-    // Get inventory value
-    const inventoryValue = getTotalInventoryValue(user.id);
-
-    // Low stock items
-    const lowStockItems = products.filter(
-      (p) => p.currentStock <= p.minimumStock,
-    );
-
-    setStats({
-      todayRevenue: dailyStats.revenue,
-      todayCOGS: dailyStats.cogs,
-      todayExpenses: dailyStats.expenses,
-      todayProfit: dailyStats.profit,
-      todayItemsSold: dailyStats.itemsSold,
-      monthRevenue: monthlyStats.revenue,
-      monthCOGS: monthlyStats.cogs,
-      monthExpenses: monthlyStats.expenses,
-      monthProfit: monthlyStats.profit,
-      monthItemsSold: monthlyStats.itemsSold,
-      inventoryValue,
-      activeProducts: products.length,
-      lowStockCount: lowStockItems.length,
-      lowStockItems: lowStockItems.slice(0, 5),
-      totalRevenue,
-      totalCOGS,
-      totalExpenses,
-      totalProfit,
-    });
-
-    setIsLoading(false);
-  }, [user]);
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, [user?.id]);
 
   const StatCard = ({ title, value, icon, color, subtitle }: any) => (
     <div className="bg-card rounded-2xl border border-border p-6 flex items-start justify-between hover:shadow-lg transition-shadow">

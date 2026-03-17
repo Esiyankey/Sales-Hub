@@ -3,11 +3,26 @@
 import React from "react";
 
 import { useAuth } from "@/lib/auth-context-supabase";
-import { getDebtors, addDebtor, updateDebtor, deleteDebtor } from "@/lib/db";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState, useEffect } from "react";
-import type { Debtor } from "@/lib/db";
+import {
+  addDebtorSupabase,
+  deleteDebtorSupabase,
+  getDebtorsSupabase,
+  updateDebtorSupabase,
+} from "@/lib/supabase-service";
+
+type Debtor = {
+  id: string;
+  userId: string;
+  name: string;
+  amount: number;
+  phone?: string;
+  description?: string;
+  status: "pending" | "partial" | "cleared";
+  createdAt: number;
+};
 
 const STATUS_OPTIONS = ["pending", "partial", "cleared"] as const;
 
@@ -28,16 +43,39 @@ export function DebtorsPage() {
 
   useEffect(() => {
     if (!user) return;
-    loadDebtors();
-  }, [user]);
+    const controller = new AbortController();
+    loadDebtors({ signal: controller.signal });
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
-  const loadDebtors = () => {
+  const loadDebtors = async (opts?: { signal?: AbortSignal }) => {
     if (!user) return;
-    setDebtors(getDebtors(user.id));
-    setIsLoading(false);
+    setIsLoading(true);
+    try {
+      if (opts?.signal?.aborted) return;
+      const data = await getDebtorsSupabase(user.id);
+      if (opts?.signal?.aborted) return;
+      const mapped: Debtor[] = (data || []).map((d: any) => ({
+        id: d.id,
+        userId: d.user_id,
+        name: d.name,
+        amount: Number(d.amount ?? 0),
+        phone: d.phone ?? undefined,
+        description: d.description ?? undefined,
+        status: d.status,
+        createdAt: d.created_at ? new Date(d.created_at).getTime() : Date.now(),
+      }));
+      setDebtors(mapped);
+    } catch (error) {
+      console.error("Failed to load debtors:", error);
+      setDebtors([]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
 
@@ -46,20 +84,34 @@ export function DebtorsPage() {
       return;
     }
 
-    if (editingId) {
-      updateDebtor(user.id, editingId, formData);
-    } else {
-      addDebtor(user.id, {
-        name: formData.name,
-        amount: formData.amount,
-        phone: formData.phone,
-        description: formData.description,
-        status: formData.status,
-      });
-    }
+    try {
+      if (editingId) {
+        const updated = await updateDebtorSupabase(user.id, editingId, {
+          name: formData.name,
+          amount: formData.amount,
+          phone: formData.phone || undefined,
+          description: formData.description || undefined,
+          status: formData.status,
+          updated_at: new Date().toISOString(),
+        });
+        if (!updated) throw new Error("Update failed");
+      } else {
+        const created = await addDebtorSupabase(user.id, {
+          name: formData.name,
+          amount: formData.amount,
+          phone: formData.phone || undefined,
+          description: formData.description || undefined,
+          status: formData.status,
+        });
+        if (!created) throw new Error("Create failed");
+      }
 
-    resetForm();
-    loadDebtors();
+      resetForm();
+      await loadDebtors();
+    } catch (error) {
+      console.error("Failed to save debtor:", error);
+      alert("Failed to save record. Check console for details.");
+    }
   };
 
   const resetForm = () => {
@@ -86,11 +138,15 @@ export function DebtorsPage() {
     setIsAdding(true);
   };
 
-  const handleDelete = (debtorId: string) => {
+  const handleDelete = async (debtorId: string) => {
     if (!user) return;
     if (confirm("Are you sure you want to delete this record?")) {
-      deleteDebtor(user.id, debtorId);
-      loadDebtors();
+      const ok = await deleteDebtorSupabase(user.id, debtorId);
+      if (!ok) {
+        alert("Failed to delete record. Check console for details.");
+        return;
+      }
+      await loadDebtors();
     }
   };
 

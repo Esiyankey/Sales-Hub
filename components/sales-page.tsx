@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context-supabase";
+import { deleteSaleSupabase } from "@/lib/supabase-service";
 
 type Product = {
   id: string;
@@ -64,6 +65,18 @@ export function SalesPage() {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [notes, setNotes] = useState("");
+
+  const handleDeleteSale = async (saleId: string) => {
+    if (!user) return;
+    if (!confirm("Delete this sale? Inventory will be restored.")) return;
+
+    const ok = await deleteSaleSupabase(user.id, saleId);
+    if (!ok) {
+      alert("Failed to delete sale. Check console for details.");
+      return;
+    }
+    await loadData();
+  };
 
   const loadData = async (opts?: { signal?: AbortSignal }) => {
     if (!user) return;
@@ -565,24 +578,37 @@ export function SalesPage() {
                 <div className="space-y-3 max-h-96 overflow-y-auto">
                   {sales.length > 0 ? (
                     displayedSales.map((sale) => (
-                      <button
+                      <div
                         key={sale.id}
-                        onClick={() => setViewingSale(sale)}
                         className="w-full text-left p-4 bg-muted/30 hover:bg-muted/50 rounded-lg border border-border transition-colors"
                       >
-                        <div className="flex justify-between items-start mb-2">
-                          <p className="font-medium text-foreground">
-                            {sale.customerName}
+                        <button
+                          onClick={() => setViewingSale(sale)}
+                          className="w-full text-left"
+                        >
+                          <div className="flex justify-between items-start mb-2">
+                            <p className="font-medium text-foreground">
+                              {sale.customerName}
+                            </p>
+                            <p className="font-semibold text-primary">
+                              ₵{sale.totalRevenue.toLocaleString()}
+                            </p>
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            {new Date(sale.date).toLocaleDateString()} |{" "}
+                            {sale.items.length} items
                           </p>
-                          <p className="font-semibold text-primary">
-                            ₵{sale.totalRevenue.toLocaleString()}
-                          </p>
+                        </button>
+
+                        <div className="mt-3 flex gap-2">
+                          <Button
+                            onClick={() => handleDeleteSale(sale.id)}
+                            className="bg-destructive text-white hover:bg-destructive/90 rounded-lg"
+                          >
+                            Delete sale
+                          </Button>
                         </div>
-                        <p className="text-sm text-muted-foreground">
-                          {new Date(sale.date).toLocaleDateString()} |{" "}
-                          {sale.items.length} items
-                        </p>
-                      </button>
+                      </div>
                     ))
                   ) : (
                     <p className="text-center text-muted-foreground py-8">
